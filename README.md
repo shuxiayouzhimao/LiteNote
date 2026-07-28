@@ -61,7 +61,7 @@ LiteNote/
 
 > **关于"虚拟环境"**：Tauri 项目没有 Python 的 venv。前端依赖天然隔离在项目本地的 `node_modules`，Rust 依赖隔离在 `src-tauri/target`，都不污染全局，等价于隔离环境。无需额外操作。
 
-1. **Node.js 18+**
+1. **Node.js 20+**
 2. **Rust 工具链**：
    - 访问 https://rustup.rs 下载 `rustup-init.exe` 并安装
    - 安装后重启终端，验证：`rustc --version` 和 `cargo --version`
