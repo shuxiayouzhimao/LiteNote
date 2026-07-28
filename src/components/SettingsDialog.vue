@@ -3,6 +3,8 @@
 import { ref } from "vue";
 import { useConfigStore } from "../stores/config";
 import { useNotesStore } from "../stores/notes";
+import { showConfirm } from "../composables/useConfirm";
+import { checkUpdate, installUpdate } from "../api";
 
 const configStore = useConfigStore();
 const notesStore = useNotesStore();
@@ -11,8 +13,6 @@ const emit = defineEmits<{
   (e: "close"): void;
   (e: "toast", msg: string): void;
 }>();
-
-const confirmClearVisible = ref(false);
 
 // 主题切换
 function onThemeChange(theme: "light" | "dark") {
@@ -31,11 +31,41 @@ function onOpacityInput(e: Event) {
   configStore.setOpacity(val);
 }
 
-// 清空回收站
+// 清空回收站（带二次确认）
 async function onClearTrash() {
-  confirmClearVisible.value = false;
+  const ok = await showConfirm({
+    title: "清空回收站",
+    message: "确定要清空回收站吗？此操作不可恢复。",
+    confirmText: "确定清空",
+    danger: true,
+  });
+  if (!ok) return;
   const count = await notesStore.clearTrash();
   emit("toast", `已清空回收站（${count} 篇）`);
+}
+
+// 检查更新
+const checkingUpdate = ref(false);
+async function onCheckUpdate() {
+  checkingUpdate.value = true;
+  const result = await checkUpdate();
+  checkingUpdate.value = false;
+  if (result.hasUpdate && result.version) {
+    const ok = await showConfirm({
+      title: "发现新版本",
+      message: `新版本 v${result.version} 可用，是否立即更新？`,
+      confirmText: "立即更新",
+    });
+    if (ok) {
+      try {
+        await installUpdate();
+      } catch {
+        emit("toast", "更新失败，请稍后重试");
+      }
+    }
+  } else {
+    emit("toast", "已是最新版本");
+  }
 }
 </script>
 
@@ -105,25 +135,21 @@ async function onClearTrash() {
         <!-- 清空回收站 -->
         <div class="row">
           <span class="label">回收站管理</span>
-          <button class="danger-btn" @click="confirmClearVisible = true">清空回收站</button>
+          <button class="danger-btn" @click="onClearTrash">清空回收站</button>
         </div>
+      </div>
+
+      <!-- 检查更新 -->
+      <div class="sep"></div>
+      <div class="row">
+        <span class="label">软件更新</span>
+        <button class="update-btn" @click="onCheckUpdate">检查更新</button>
       </div>
 
       <!-- 关于 -->
       <div class="about">
-        LiteNote 灵光记事本 v1.0<br />
+        LiteNote 灵光记事本 v1.0.0<br />
         基于 Tauri + Vue 3 · 极轻量现代化桌面记事本
-      </div>
-    </div>
-
-    <!-- 二次确认 -->
-    <div v-if="confirmClearVisible" class="confirm-overlay" @click.self="confirmClearVisible = false">
-      <div class="confirm-box">
-        <div class="confirm-text">确定要清空回收站吗？<br />此操作不可恢复。</div>
-        <div class="confirm-actions">
-          <button class="btn-cancel" @click="confirmClearVisible = false">取消</button>
-          <button class="btn-confirm" @click="onClearTrash">确定清空</button>
-        </div>
       </div>
     </div>
   </div>
@@ -310,6 +336,20 @@ async function onClearTrash() {
   color: #fff;
 }
 
+/* 检查更新按钮 */
+.update-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  transition: all 0.15s ease;
+}
+.update-btn:hover {
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+
 /* 关于 */
 .about {
   margin-top: 16px;
@@ -317,52 +357,5 @@ async function onClearTrash() {
   font-size: 11px;
   color: var(--text-secondary);
   line-height: 1.8;
-}
-
-/* 二次确认 */
-.confirm-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1001;
-}
-.confirm-box {
-  background: var(--window-bg-solid);
-  border-radius: 12px;
-  padding: 24px;
-  width: 300px;
-  box-shadow: var(--shadow);
-}
-.confirm-text {
-  font-size: 14px;
-  color: var(--text-primary);
-  text-align: center;
-  line-height: 1.8;
-  margin-bottom: 20px;
-}
-.confirm-actions {
-  display: flex;
-  gap: 12px;
-}
-.btn-cancel,
-.btn-confirm {
-  flex: 1;
-  padding: 8px;
-  border-radius: 8px;
-  font-size: 13px;
-}
-.btn-cancel {
-  background: var(--search-bg);
-  color: var(--text-primary);
-}
-.btn-confirm {
-  background: var(--danger);
-  color: #fff;
-}
-.btn-confirm:hover {
-  background: var(--danger-hover);
 }
 </style>

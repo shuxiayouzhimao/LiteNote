@@ -7,10 +7,12 @@ import TitleBar from "./components/TitleBar.vue";
 import NoteList from "./components/NoteList.vue";
 import Editor from "./components/Editor.vue";
 import SettingsDialog from "./components/SettingsDialog.vue";
+import ConfirmDialog from "./components/ConfirmDialog.vue";
 import Toast from "./components/Toast.vue";
 import { useNotesStore } from "./stores/notes";
 import { useConfigStore } from "./stores/config";
 import { useToast } from "./composables/useToast";
+import { showConfirm } from "./composables/useConfirm";
 import type { FilterType } from "./api/types";
 
 const notesStore = useNotesStore();
@@ -91,6 +93,12 @@ function onKeyDown(e: KeyboardEvent) {
     void handleNewNote();
     return;
   }
+  // Ctrl+Shift+M 切换编辑器模式（编辑/分屏/预览）
+  if (ctrl && e.shiftKey && e.key.toLowerCase() === "m") {
+    e.preventDefault();
+    editorRef.value?.cycleMode();
+    return;
+  }
   // Ctrl+F 聚焦搜索
   if (ctrl && e.key.toLowerCase() === "f") {
     e.preventDefault();
@@ -116,7 +124,15 @@ function onKeyDown(e: KeyboardEvent) {
     if (id) {
       e.preventDefault();
       if (notesStore.isTrash) {
-        void notesStore.permanentDelete(id).then(() => showToast("已永久删除"));
+        const note = notesStore.currentNote;
+        void showConfirm({
+          title: "永久删除",
+          message: `确定要永久删除「${note?.title || "无标题"}」吗？此操作不可恢复。`,
+          confirmText: "永久删除",
+          danger: true,
+        }).then((ok) => {
+          if (ok) void notesStore.permanentDelete(id).then(() => showToast("已永久删除"));
+        });
       } else {
         void notesStore.deleteNote(id).then(() => showToast("已移至回收站"));
       }
@@ -167,6 +183,9 @@ function onToast(msg: string) {
 
     <!-- 设置对话框 -->
     <SettingsDialog v-if="settingsVisible" @close="settingsVisible = false" @toast="onToast" />
+
+    <!-- 确认对话框（全局单例） -->
+    <ConfirmDialog />
 
     <!-- Toast -->
     <Toast />

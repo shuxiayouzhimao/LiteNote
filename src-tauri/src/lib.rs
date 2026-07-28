@@ -23,6 +23,8 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        // 自动更新插件
+        .plugin(tauri_plugin_updater::Builder::new().build())
         // 全局快捷键插件：Ctrl+Shift+N 唤出新建笔记
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()

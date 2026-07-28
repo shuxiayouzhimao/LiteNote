@@ -110,3 +110,33 @@ export function loadConfig(): Promise<AppConfig> {
 export function saveConfig(config: AppConfig): Promise<void> {
   return invoke("save_config", { config });
 }
+
+// ========== 自动更新 ==========
+
+/**
+ * 检查更新，返回是否有新版本可用
+ * 有新版本时弹出下载对话框，用户确认后自动下载安装
+ */
+export async function checkUpdate(): Promise<{ hasUpdate: boolean; version?: string }> {
+  try {
+    const { check } = await import("@tauri-apps/plugin-updater");
+    const update = await check();
+    if (update) {
+      return { hasUpdate: true, version: update.version };
+    }
+    return { hasUpdate: false };
+  } catch (e) {
+    console.error("检查更新失败:", e);
+    return { hasUpdate: false };
+  }
+}
+
+/** 安装更新（下载、安装并重启） */
+export async function installUpdate(): Promise<void> {
+  const { check } = await import("@tauri-apps/plugin-updater");
+  const update = await check();
+  if (update) {
+    // downloadAndInstall 会自动重启应用
+    await update.downloadAndInstall();
+  }
+}

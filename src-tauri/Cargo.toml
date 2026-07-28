@@ -22,6 +22,7 @@ tauri-plugin-dialog = "2.0.0"
 tauri-plugin-fs = "2.0.0"
 tauri-plugin-autostart = "2.0.0"
 tauri-plugin-global-shortcut = "2.0.0"
+tauri-plugin-updater = "2.0.0"
 
 # 数据库：rusqlite 捆绑 SQLite，无需系统安装
 rusqlite = { version = "0.31", features = ["bundled"] }

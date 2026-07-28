@@ -2,19 +2,36 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from "vue";
 import MarkdownIt from "markdown-it";
+import hljs from "highlight.js";
 import { useNotesStore } from "../stores/notes";
 
 const store = useNotesStore();
 
 const titleRef = ref<HTMLInputElement | null>(null);
+const contentRef = ref<HTMLTextAreaElement | null>(null);
 const exportMenuVisible = ref(false);
 
-// Markdown 解析器实例
+// Markdown 解析器实例（集成 highlight.js 代码语法高亮）
 const md = new MarkdownIt({
   html: false,        // 禁用原始 HTML（安全）
   linkify: true,      // 自动识别链接
   breaks: true,       // 换行转 <br>
   typographer: true,  // 智能引号/破折号
+  highlight: (str: string, lang: string): string => {
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        return `<pre><code class="hljs language-${lang}">${hljs.highlight(str, { language: lang }).value}</code></pre>`;
+      } catch {
+        // 高亮失败时降级为纯文本
+      }
+    }
+    // 自动检测语言或无语言标记
+    try {
+      return `<pre><code class="hljs">${hljs.highlightAuto(str).value}</code></pre>`;
+    } catch {
+      return `<pre><code>${md.utils.escapeHtml(str)}</code></pre>`;
+    }
+  },
 });
 
 // 视图模式: 'edit' | 'split' | 'preview'
@@ -25,6 +42,88 @@ function cycleMode() {
   const modes: Array<"edit" | "split" | "preview"> = ["edit", "split", "preview"];
   const idx = modes.indexOf(viewMode.value);
   viewMode.value = modes[(idx + 1) % modes.length];
+}
+
+// Markdown 格式化工具栏：在光标处插入/包裹语法
+type MarkdownAction = "bold" | "italic" | "heading" | "code" | "link" | "list";
+
+function insertMarkdown(action: MarkdownAction) {
+  const ta = contentRef.value;
+  if (!ta) return;
+
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  const selected = ta.value.substring(start, end);
+  const before = ta.value.substring(0, start);
+  const after = ta.value.substring(end);
+
+  let replacement = "";
+  let selStart = start;
+  let selEnd = start;
+
+  switch (action) {
+    case "bold":
+      replacement = selected ? `**${selected}**` : "**加粗文本**";
+      selStart = start + 2;
+      selEnd = selected ? start + 2 + selected.length : start + 6;
+      break;
+    case "italic":
+      replacement = selected ? `*${selected}*` : "*斜体文本*";
+      selStart = start + 1;
+      selEnd = selected ? start + 1 + selected.length : start + 5;
+      break;
+    case "heading":
+      replacement = selected
+        ? selected.split("\n").map((l) => `# ${l}`).join("\n")
+        : `# 标题`;
+      selStart = start + 2;
+      selEnd = selected ? start + replacement.length : start + 4;
+      break;
+    case "code":
+      replacement = selected ? `\`${selected}\`` : "`代码`";
+      selStart = start + 1;
+      selEnd = selected ? start + 1 + selected.length : start + 3;
+      break;
+    case "link":
+      replacement = selected ? `[${selected}](url)` : "[链接文本](url)";
+      selStart = selected ? start + 1 : start + 1;
+      selEnd = selected ? start + 1 + selected.length : start + 5;
+      break;
+    case "list":
+      replacement = selected
+        ? selected.split("\n").map((l) => `- ${l}`).join("\n")
+        : "- 列表项";
+      selStart = start + 2;
+      selEnd = selected ? start + replacement.length : start + 5;
+      break;
+  }
+
+  const newContent = before + replacement + after;
+
+  // 通过 store 更新内容（触发自动保存计时器）
+  if (note.value) {
+    store.onContentChanged(note.value.title, newContent);
+  }
+
+  // 恢复光标位置
+  void nextTick(() => {
+    ta.focus();
+    ta.setSelectionRange(selStart, selEnd);
+  });
+}
+
+// 编辑器内快捷键（仅当 textarea 聚焦时）
+function onEditorKeydown(e: KeyboardEvent) {
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (!ctrl) return;
+
+  if (e.key.toLowerCase() === "b") {
+    e.preventDefault();
+    insertMarkdown("bold");
+  } else if (e.key.toLowerCase() === "i") {
+    e.preventDefault();
+    insertMarkdown("italic");
+  }
 }
 
 // 模式标签
@@ -44,7 +143,7 @@ const modeTooltip = computed(() => {
   }
 });
 
-// 暴露给父组件：聚焦标题（新建笔记后调用）
+// 暴露给父组件：聚焦标题、切换编辑模式
 defineExpose({
   focusTitle() {
     void nextTick(() => {
@@ -52,6 +151,7 @@ defineExpose({
       titleRef.value?.select();
     });
   },
+  cycleMode,
 });
 
 const emit = defineEmits<{
@@ -142,6 +242,16 @@ watch(note, () => {
         <span class="save-status">{{ saveText }}</span>
       </div>
 
+      <!-- Markdown 格式化工具栏 -->
+      <div class="md-toolbar">
+        <button class="md-btn" title="加粗 (Ctrl+B)" @click="insertMarkdown('bold')"><b>B</b></button>
+        <button class="md-btn" title="斜体 (Ctrl+I)" @click="insertMarkdown('italic')"><i>I</i></button>
+        <button class="md-btn" title="标题" @click="insertMarkdown('heading')">H</button>
+        <button class="md-btn" title="行内代码" @click="insertMarkdown('code')">&lt;/&gt;</button>
+        <button class="md-btn" title="链接" @click="insertMarkdown('link')">🔗</button>
+        <button class="md-btn" title="无序列表" @click="insertMarkdown('list')">📋</button>
+      </div>
+
       <!-- 标题 -->
       <input ref="titleRef" v-model="title" class="title-input" placeholder="输入标题..." />
 
@@ -151,11 +261,13 @@ watch(note, () => {
       <div class="editor-body">
         <!-- 纯文本 / 分屏：都显示编辑区 -->
         <textarea
+          ref="contentRef"
           v-show="viewMode !== 'preview'"
           v-model="content"
           class="content-input"
           :class="{ 'split-pane': viewMode === 'split' }"
           placeholder="在这里开始写笔记...（支持 Markdown 语法）"
+          @keydown="onEditorKeydown"
         ></textarea>
 
         <!-- 分屏/预览：显示渲染结果 -->
@@ -223,6 +335,33 @@ watch(note, () => {
 .save-status {
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+/* Markdown 格式化工具栏 */
+.md-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 0;
+}
+.md-btn {
+  width: 28px;
+  height: 26px;
+  border-radius: 5px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s ease;
+}
+.md-btn:hover {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+.md-btn b,
+.md-btn i {
+  font-size: 13px;
 }
 
 /* 导出菜单 */

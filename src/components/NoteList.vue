@@ -3,6 +3,7 @@
 import { ref, computed } from "vue";
 import { useNotesStore } from "../stores/notes";
 import { formatTime, truncate } from "../composables/utils";
+import { showConfirm } from "../composables/useConfirm";
 import type { Note } from "../api/types";
 
 const store = useNotesStore();
@@ -94,6 +95,13 @@ async function menuRestore() {
 }
 async function menuPermanentDelete() {
   if (menuNote.value) {
+    const ok = await showConfirm({
+      title: "永久删除",
+      message: `确定要永久删除「${menuNote.value.title || "无标题"}」吗？此操作不可恢复。`,
+      confirmText: "永久删除",
+      danger: true,
+    });
+    if (!ok) { closeMenu(); return; }
     await store.permanentDelete(menuNote.value.id);
     emit("toast", "已永久删除");
   }

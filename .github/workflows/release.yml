@@ -44,3 +44,32 @@ jobs:
             src-tauri/target/release/litenote.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate updater manifest
+        shell: bash
+        run: |
+          MSI=$(ls src-tauri/target/release/bundle/msi/*.msi | head -1)
+          NSIS=$(ls src-tauri/target/release/bundle/nsis/*.exe | head -1)
+          cat > latest.json << EOF
+          {
+            "version": "${{ github.ref_name }}",
+            "notes": "See release notes at https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}",
+            "pub_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "",
+                "url": "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$(basename "$NSIS")"
+              }
+            }
+          }
+          EOF
+          echo "Generated latest.json"
+
+      - name: Upload updater manifest
+        uses: softprops/action-gh-release@v2
+        with:
+          name: LiteNote ${{ github.ref_name }}
+          draft: true
+          files: latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -45,5 +45,12 @@
         "type": "downloadBootstrapper"
       }
     }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/shuxiayouzhimao/LiteNote/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

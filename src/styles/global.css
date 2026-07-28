@@ -69,6 +69,12 @@
   --shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
 }
 
+/* 深色主题下覆盖 highlight.js github 主题 */
+[data-theme="dark"] .hljs {
+  background: #1a1a22;
+  color: #c9d1d9;
+}
+
 /* ===== 基础重置 ===== */
 * {
   margin: 0;
