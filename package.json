@@ -22,22 +22,30 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
-    "vue": "^3.4.21",
-    "pinia": "^2.1.7",
     "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-autostart": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.0.0",
     "@tauri-apps/plugin-fs": "^2.0.0",
-    "@tauri-apps/plugin-autostart": "^2.0.0",
-    "@tauri-apps/plugin-global-shortcut": "^2.0.0"
+    "@tauri-apps/plugin-global-shortcut": "^2.0.0",
+    "markdown-it": "^14.3.0",
+    "pinia": "^2.1.7",
+    "vue": "^3.4.21"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",
+    "@types/markdown-it": "^14.1.2",
     "@vitejs/plugin-vue": "^5.0.4",
+    "@vue/test-utils": "^2.4.11",
+    "happy-dom": "^20.11.1",
+    "jsdom": "^30.0.0",
     "typescript": "^5.4.5",
     "vite": "^5.2.8",
+    "vitest": "^4.1.10",
     "vue-tsc": "^2.0.13"
   }
 }

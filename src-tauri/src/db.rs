@@ -217,3 +217,250 @@ pub fn get_stats(conn: &Connection) -> SqlResult<Stats> {
 
     Ok(Stats { count, words })
 }
+
+// ========== 单元测试 ==========
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    /// 每个测试使用独立的内存数据库
+    fn setup() -> Connection {
+        let conn = Connection::open_in_memory().expect("创建内存数据库失败");
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS notes (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                title       TEXT    NOT NULL DEFAULT '无标题',
+                content     TEXT    DEFAULT '',
+                is_favorite INTEGER DEFAULT 0,
+                is_deleted  INTEGER DEFAULT 0,
+                is_pinned   INTEGER DEFAULT 0,
+                created_at  TEXT    DEFAULT (datetime('now','localtime')),
+                updated_at  TEXT    DEFAULT (datetime('now','localtime'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_notes_updated  ON notes(updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_notes_deleted  ON notes(is_deleted);
+            CREATE INDEX IF NOT EXISTS idx_notes_favorite ON notes(is_favorite, is_deleted);",
+        )
+        .expect("建表失败");
+        conn
+    }
+
+    #[test]
+    fn test_create_note() {
+        let conn = setup();
+        let id = create_note(&conn, "测试标题", "测试内容").expect("创建笔记失败");
+        assert!(id > 0, "新建笔记应返回正数 id");
+
+        let note = get_note(&conn, id).expect("查询失败").expect("笔记应存在");
+        assert_eq!(note.title, "测试标题");
+        assert_eq!(note.content, "测试内容");
+        assert!(!note.is_favorite);
+        assert!(!note.is_deleted);
+        assert!(!note.is_pinned);
+    }
+
+    #[test]
+    fn test_create_note_default_empty() {
+        let conn = setup();
+        let id = create_note(&conn, "无标题", "").expect("创建失败");
+        let note = get_note(&conn, id).expect("查询失败").expect("笔记应存在");
+        assert_eq!(note.title, "无标题");
+        assert_eq!(note.content, "");
+    }
+
+    #[test]
+    fn test_update_note() {
+        let conn = setup();
+        let id = create_note(&conn, "原始标题", "原始内容").unwrap();
+
+        let ok = update_note(&conn, id, "新标题", "新内容").unwrap();
+        assert!(ok);
+
+        let note = get_note(&conn, id).unwrap().unwrap();
+        assert_eq!(note.title, "新标题");
+        assert_eq!(note.content, "新内容");
+    }
+
+    #[test]
+    fn test_update_nonexistent() {
+        let conn = setup();
+        let ok = update_note(&conn, 999, "标题", "内容").unwrap();
+        assert!(!ok, "更新不存在的笔记应返回 false");
+    }
+
+    #[test]
+    fn test_delete_and_restore() {
+        let conn = setup();
+        let id = create_note(&conn, "要删的笔记", "").unwrap();
+
+        // 软删除
+        let ok = delete_note(&conn, id).unwrap();
+        assert!(ok);
+
+        // 不应该出现在 'all' 列表中
+        let all = list_notes(&conn, "all").unwrap();
+        assert!(all.iter().all(|n| n.id != id));
+
+        // 应该出现在 'trash' 列表中
+        let trash = list_notes(&conn, "trash").unwrap();
+        assert!(trash.iter().any(|n| n.id == id));
+
+        // 恢复
+        let ok = restore_note(&conn, id).unwrap();
+        assert!(ok);
+
+        let all = list_notes(&conn, "all").unwrap();
+        assert!(all.iter().any(|n| n.id == id));
+    }
+
+    #[test]
+    fn test_permanent_delete() {
+        let conn = setup();
+        let id = create_note(&conn, "永删笔记", "").unwrap();
+
+        let ok = permanent_delete(&conn, id).unwrap();
+        assert!(ok);
+
+        let note = get_note(&conn, id).unwrap();
+        assert!(note.is_none(), "永久删除后笔记应不存在");
+
+        // 删除不存在的不应报错
+        let ok = permanent_delete(&conn, 999).unwrap();
+        assert!(!ok);
+    }
+
+    #[test]
+    fn test_list_notes_filter() {
+        let conn = setup();
+        create_note(&conn, "普通笔记", "").unwrap();
+        let id2 = create_note(&conn, "收藏笔记", "").unwrap();
+        toggle_favorite(&conn, id2).unwrap();
+
+        let all = list_notes(&conn, "all").unwrap();
+        assert_eq!(all.len(), 2);
+
+        let favs = list_notes(&conn, "favorite").unwrap();
+        assert_eq!(favs.len(), 1);
+        assert_eq!(favs[0].id, id2);
+
+        let trash = list_notes(&conn, "trash").unwrap();
+        assert!(trash.is_empty());
+    }
+
+    #[test]
+    fn test_list_trash() {
+        let conn = setup();
+        let id1 = create_note(&conn, "笔记1", "").unwrap();
+        create_note(&conn, "笔记2", "").unwrap();
+        delete_note(&conn, id1).unwrap();
+
+        let trash = list_notes(&conn, "trash").unwrap();
+        assert_eq!(trash.len(), 1);
+        assert_eq!(trash[0].id, id1);
+    }
+
+    #[test]
+    fn test_search_notes() {
+        let conn = setup();
+        create_note(&conn, "Rust 学习", "所有权与借用").unwrap();
+        create_note(&conn, "Vue 入门", "组件与响应式").unwrap();
+        create_note(&conn, "Tauri 配置", "Rust 后端命令").unwrap();
+
+        // 搜标题
+        let results = search_notes(&conn, "Rust").unwrap();
+        assert_eq!(results.len(), 2); // "Rust 学习" + "Tauri 配置"（内容含 Rust）
+
+        // 搜内容
+        let results = search_notes(&conn, "组件").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title, "Vue 入门");
+
+        // 无匹配
+        let results = search_notes(&conn, "Python").unwrap();
+        assert!(results.is_empty());
+
+        // 搜索不搜回收站中的笔记
+        let id = create_note(&conn, "已删的Rust笔记", "").unwrap();
+        delete_note(&conn, id).unwrap();
+        let results = search_notes(&conn, "已删").unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_toggle_favorite() {
+        let conn = setup();
+        let id = create_note(&conn, "笔记", "").unwrap();
+
+        let fav = toggle_favorite(&conn, id).unwrap();
+        assert!(fav);
+
+        let note = get_note(&conn, id).unwrap().unwrap();
+        assert!(note.is_favorite);
+
+        let fav = toggle_favorite(&conn, id).unwrap();
+        assert!(!fav);
+    }
+
+    #[test]
+    fn test_toggle_pin() {
+        let conn = setup();
+        let id = create_note(&conn, "笔记", "").unwrap();
+
+        let pinned = toggle_pin(&conn, id).unwrap();
+        assert!(pinned);
+
+        let pinned = toggle_pin(&conn, id).unwrap();
+        assert!(!pinned);
+    }
+
+    #[test]
+    fn test_pinned_first_in_list() {
+        let conn = setup();
+        let id1 = create_note(&conn, "普通", "").unwrap();
+        let id2 = create_note(&conn, "置顶", "").unwrap();
+        toggle_pin(&conn, id2).unwrap();
+
+        let all = list_notes(&conn, "all").unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].id, id2, "置顶笔记应排第一");
+        assert_eq!(all[1].id, id1);
+    }
+
+    #[test]
+    fn test_clear_trash() {
+        let conn = setup();
+        let id1 = create_note(&conn, "a", "").unwrap();
+        let id2 = create_note(&conn, "b", "").unwrap();
+        delete_note(&conn, id1).unwrap();
+        delete_note(&conn, id2).unwrap();
+
+        let count = clear_trash(&conn).unwrap();
+        assert_eq!(count, 2);
+
+        let trash = list_notes(&conn, "trash").unwrap();
+        assert!(trash.is_empty());
+    }
+
+    #[test]
+    fn test_get_stats() {
+        let conn = setup();
+        create_note(&conn, "笔记1", "Hello World").unwrap();      // 10 chars (no whitespace)
+        create_note(&conn, "笔记2", "Rust is great").unwrap();    // 12 chars (space excluded)
+        create_note(&conn, "已删", "garbage").unwrap();
+        // 软删除第三个
+        delete_note(&conn, 3).unwrap();
+
+        let stats = get_stats(&conn).unwrap();
+        assert_eq!(stats.count, 2, "统计应排除回收站");
+        // "HelloWorld" = 10, "Rustisgreat" = 11 → 21
+        assert_eq!(stats.words, 21);
+    }
+
+    #[test]
+    fn test_get_note_nonexistent() {
+        let conn = setup();
+        let result = get_note(&conn, 999).unwrap();
+        assert!(result.is_none());
+    }
+}

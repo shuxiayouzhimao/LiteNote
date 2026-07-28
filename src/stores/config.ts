@@ -40,8 +40,8 @@ export const useConfigStore = defineStore("config", () => {
       auto_start: autoStart.value,
       sidebar_active: sidebarActive.value,
       last_opened_note_id: lastOpenedNoteId.value,
-      window_width: 1100,
-      window_height: 720,
+      window_width: window.innerWidth || 1100,
+      window_height: window.innerHeight || 720,
       window_opacity: windowOpacity.value,
     };
     await api.saveConfig(cfg);

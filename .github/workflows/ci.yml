@@ -1,0 +1,112 @@
+# LiteNote CI — PR 触发：Lint → Test → Build
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ========== 前端 Lint + Test（跨平台，轻量） ==========
+  frontend:
+    name: Frontend (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx vue-tsc --noEmit
+
+      - name: Run tests
+        run: npm test
+
+  # ========== Rust Lint + Test ==========
+  rust:
+    name: Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Clippy lint
+        run: cargo clippy --all-targets -- -D warnings
+        working-directory: src-tauri
+
+      - name: Rust tests
+        run: cargo test
+        working-directory: src-tauri
+
+  # ========== Tauri 构建（仅 Windows，产物上传） ==========
+  build:
+    name: Build (Windows)
+    # 仅在 main 分支 push 或 PR 时构建以节省 Actions 时间
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: windows-latest
+    needs: [frontend, rust]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build Tauri
+        run: npm run tauri build
+
+      - name: Upload MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: LiteNote-MSI
+          path: src-tauri/target/release/bundle/msi/*.msi
+
+      - name: Upload NSIS
+        uses: actions/upload-artifact@v4
+        with:
+          name: LiteNote-NSIS
+          path: src-tauri/target/release/bundle/nsis/*.exe
+
+      - name: Upload portable exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: LiteNote-Portable
+          path: src-tauri/target/release/litenote.exe

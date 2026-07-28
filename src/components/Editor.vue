@@ -1,12 +1,48 @@
-<!-- 编辑区 - 右侧沉浸式编辑：标题 + 内容 + 收藏/导出 + 字数统计 -->
+<!-- 编辑区 - 右侧沉浸式编辑：标题 + 内容 + Markdown 预览 + 收藏/导出 + 字数统计 -->
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from "vue";
+import MarkdownIt from "markdown-it";
 import { useNotesStore } from "../stores/notes";
 
 const store = useNotesStore();
 
 const titleRef = ref<HTMLInputElement | null>(null);
 const exportMenuVisible = ref(false);
+
+// Markdown 解析器实例
+const md = new MarkdownIt({
+  html: false,        // 禁用原始 HTML（安全）
+  linkify: true,      // 自动识别链接
+  breaks: true,       // 换行转 <br>
+  typographer: true,  // 智能引号/破折号
+});
+
+// 视图模式: 'edit' | 'split' | 'preview'
+const viewMode = ref<"edit" | "split" | "preview">("edit");
+
+// 模式循环切换
+function cycleMode() {
+  const modes: Array<"edit" | "split" | "preview"> = ["edit", "split", "preview"];
+  const idx = modes.indexOf(viewMode.value);
+  viewMode.value = modes[(idx + 1) % modes.length];
+}
+
+// 模式标签
+const modeLabel = computed(() => {
+  switch (viewMode.value) {
+    case "edit": return "📝";
+    case "split": return "🗂";
+    case "preview": return "👁";
+  }
+});
+
+const modeTooltip = computed(() => {
+  switch (viewMode.value) {
+    case "edit": return "纯文本编辑";
+    case "split": return "分屏预览";
+    case "preview": return "仅预览";
+  }
+});
 
 // 暴露给父组件：聚焦标题（新建笔记后调用）
 defineExpose({
@@ -39,6 +75,13 @@ const content = computed({
   },
 });
 
+// Markdown 渲染为 HTML（用于预览）
+const renderedHtml = computed(() => {
+  const raw = note.value?.content ?? "";
+  if (!raw.trim()) return "<p class='md-empty'>（空内容）</p>";
+  return md.render(raw);
+});
+
 // 字数统计
 const wordCount = computed(() => {
   const text = note.value?.content ?? "";
@@ -69,14 +112,15 @@ async function onExport(fmt: "txt" | "md") {
   }
 }
 
-// 切换笔记时收起导出菜单
+// 切换笔记时收起导出菜单、回到编辑模式
 watch(note, () => {
   exportMenuVisible.value = false;
+  viewMode.value = "edit";
 });
 </script>
 
 <template>
-  <div class="editor" @click="exportMenuVisible = false">
+  <div class="editor" :class="`mode-${viewMode}`" @click="exportMenuVisible = false">
     <!-- 有笔记：显示编辑器 -->
     <template v-if="note">
       <!-- 顶部操作栏 -->
@@ -92,6 +136,9 @@ watch(note, () => {
           </div>
         </div>
         <div class="spacer"></div>
+        <button class="icon-btn mode-toggle" :title="modeTooltip" @click="cycleMode">
+          {{ modeLabel }}
+        </button>
         <span class="save-status">{{ saveText }}</span>
       </div>
 
@@ -100,8 +147,25 @@ watch(note, () => {
 
       <div class="divider"></div>
 
-      <!-- 内容 -->
-      <textarea v-model="content" class="content-input" placeholder="在这里开始写笔记..."></textarea>
+      <!-- 内容区：根据模式显示不同布局 -->
+      <div class="editor-body">
+        <!-- 纯文本 / 分屏：都显示编辑区 -->
+        <textarea
+          v-show="viewMode !== 'preview'"
+          v-model="content"
+          class="content-input"
+          :class="{ 'split-pane': viewMode === 'split' }"
+          placeholder="在这里开始写笔记...（支持 Markdown 语法）"
+        ></textarea>
+
+        <!-- 分屏/预览：显示渲染结果 -->
+        <div
+          v-if="viewMode !== 'edit'"
+          class="markdown-preview"
+          :class="{ 'split-pane': viewMode === 'split' }"
+          v-html="renderedHtml"
+        ></div>
+      </div>
 
       <!-- 底部字数 -->
       <div class="bottom-bar">字数: {{ wordCount }}</div>
@@ -149,6 +213,9 @@ watch(note, () => {
 }
 .icon-btn.starred {
   color: var(--star);
+}
+.mode-toggle {
+  font-size: 15px;
 }
 .spacer {
   flex: 1;
@@ -203,7 +270,15 @@ watch(note, () => {
   margin: 4px 0 8px;
 }
 
-/* 内容 */
+/* 编辑器主体 */
+.editor-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 0;
+}
+
+/* 内容输入框 */
 .content-input {
   flex: 1;
   min-height: 0;
@@ -215,6 +290,169 @@ watch(note, () => {
 }
 .content-input::placeholder {
   color: var(--text-placeholder);
+}
+
+/* 分屏模式：编辑区和预览区各占一半 */
+.content-input.split-pane {
+  flex: 1;
+  border-right: 1px solid var(--divider);
+  padding-right: 16px;
+}
+
+.markdown-preview.split-pane {
+  flex: 1;
+  padding-left: 16px;
+}
+
+/* Markdown 预览区 */
+.markdown-preview {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text-primary);
+  padding-bottom: 8px;
+}
+
+/* ===== Markdown 渲染内容样式（scoped 穿透） ===== */
+.markdown-preview :deep(h1) {
+  font-size: 1.6em;
+  font-weight: 700;
+  margin: 0.8em 0 0.4em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--divider);
+}
+.markdown-preview :deep(h2) {
+  font-size: 1.35em;
+  font-weight: 700;
+  margin: 0.7em 0 0.35em;
+  padding-bottom: 0.2em;
+  border-bottom: 1px solid var(--divider);
+}
+.markdown-preview :deep(h3) {
+  font-size: 1.15em;
+  font-weight: 600;
+  margin: 0.6em 0 0.3em;
+}
+.markdown-preview :deep(h4),
+.markdown-preview :deep(h5),
+.markdown-preview :deep(h6) {
+  font-size: 1em;
+  font-weight: 600;
+  margin: 0.5em 0 0.25em;
+}
+
+.markdown-preview :deep(p) {
+  margin: 0.4em 0;
+}
+
+.markdown-preview :deep(strong) {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.markdown-preview :deep(em) {
+  font-style: italic;
+}
+
+.markdown-preview :deep(a) {
+  color: var(--accent);
+  text-decoration: none;
+}
+.markdown-preview :deep(a:hover) {
+  text-decoration: underline;
+}
+
+/* 列表 */
+.markdown-preview :deep(ul),
+.markdown-preview :deep(ol) {
+  padding-left: 1.5em;
+  margin: 0.4em 0;
+}
+.markdown-preview :deep(li) {
+  margin: 0.15em 0;
+}
+.markdown-preview :deep(li > p) {
+  margin: 0;
+}
+
+/* 引用块 */
+.markdown-preview :deep(blockquote) {
+  margin: 0.5em 0;
+  padding: 0.4em 0.8em;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-light);
+  border-radius: 0 6px 6px 0;
+  color: var(--text-secondary);
+}
+
+/* 代码 */
+.markdown-preview :deep(code) {
+  font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 0.9em;
+  background: var(--search-bg);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  color: var(--accent);
+}
+
+.markdown-preview :deep(pre) {
+  background: var(--search-bg);
+  padding: 12px 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.6em 0;
+}
+.markdown-preview :deep(pre code) {
+  background: none;
+  padding: 0;
+  color: var(--text-primary);
+  font-size: 0.85em;
+  line-height: 1.6;
+}
+
+/* 分割线 */
+.markdown-preview :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--divider);
+  margin: 1em 0;
+}
+
+/* 表格 */
+.markdown-preview :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.6em 0;
+}
+.markdown-preview :deep(th),
+.markdown-preview :deep(td) {
+  border: 1px solid var(--divider);
+  padding: 6px 12px;
+  text-align: left;
+}
+.markdown-preview :deep(th) {
+  background: var(--accent-light);
+  font-weight: 600;
+}
+
+/* 图片 */
+.markdown-preview :deep(img) {
+  max-width: 100%;
+  border-radius: 6px;
+  margin: 0.4em 0;
+}
+
+/* 任务列表 */
+.markdown-preview :deep(input[type="checkbox"]) {
+  margin-right: 0.4em;
+  accent-color: var(--accent);
+}
+
+/* 空内容提示 */
+.markdown-preview :deep(.md-empty) {
+  color: var(--text-placeholder);
+  font-style: italic;
 }
 
 /* 底部字数 */
