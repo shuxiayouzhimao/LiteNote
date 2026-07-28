@@ -1,6 +1,6 @@
 {
   "name": "litenote",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "LiteNote 灵光记事本 - 极轻量现代化桌面记事本 (Tauri + Vue 3)",
   "type": "module",
   "license": "MIT",
