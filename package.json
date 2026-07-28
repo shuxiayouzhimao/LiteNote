@@ -1,0 +1,43 @@
+{
+  "name": "litenote",
+  "version": "1.0.0",
+  "description": "LiteNote 灵光记事本 - 极轻量现代化桌面记事本 (Tauri + Vue 3)",
+  "type": "module",
+  "license": "MIT",
+  "author": "LiteNote",
+  "keywords": [
+    "notes",
+    "notepad",
+    "tauri",
+    "vue3",
+    "desktop",
+    "windows",
+    "sqlite"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shuxiayouzhimao/LiteNote.git"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "vue": "^3.4.21",
+    "pinia": "^2.1.7",
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-dialog": "^2.0.0",
+    "@tauri-apps/plugin-fs": "^2.0.0",
+    "@tauri-apps/plugin-autostart": "^2.0.0",
+    "@tauri-apps/plugin-global-shortcut": "^2.0.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "@vitejs/plugin-vue": "^5.0.4",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.8",
+    "vue-tsc": "^2.0.13"
+  }
+}

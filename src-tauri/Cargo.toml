@@ -1,0 +1,39 @@
+[package]
+name = "litenote"
+version = "1.0.0"
+description = "LiteNote 灵光记事本 - 极轻量现代化桌面记事本"
+authors = ["LiteNote"]
+license = "MIT"
+repository = "https://github.com/shuxiayouzhimao/LiteNote"
+edition = "2021"
+rust-version = "1.70"
+
+# 库目标：供 tauri 移动端/桌面端复用
+[lib]
+name = "litenote_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.0", features = ["tray-icon"] }
+tauri-plugin-dialog = "2.0.0"
+tauri-plugin-fs = "2.0.0"
+tauri-plugin-autostart = "2.0.0"
+tauri-plugin-global-shortcut = "2.0.0"
+
+# 数据库：rusqlite 捆绑 SQLite，无需系统安装
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = "0.4"
+
+# release 体积优化
+[profile.release]
+panic = "abort"      # 移除 panic 展开代码
+codegen-units = 1    # 更好的优化
+lto = true           # 链接时优化
+opt-level = "s"      # 优化体积
+strip = true         # 移除符号信息

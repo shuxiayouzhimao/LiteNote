@@ -1,0 +1,18 @@
+# ===== 前端 =====
+node_modules/
+dist/
+*.local
+.DS_Store
+
+# ===== Rust / Tauri =====
+src-tauri/target/
+src-tauri/gen/
+
+# ===== 编辑器 =====
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# ===== 日志 =====
+*.log
+npm-debug.log*
